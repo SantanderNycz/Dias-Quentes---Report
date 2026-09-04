@@ -1,0 +1,522 @@
+import React, { useState } from "react";
+import {
+  ComposedChart, BarChart, Bar, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, Legend, ResponsiveContainer, Cell, ReferenceLine
+} from "recharts";
+
+// ---- meses de campanha (dados oficiais) ----
+const CAMP = [
+  { lb: "Ago/22", camp: "Dias Quentes", disc: "−25%", inv: 22539, obj: 1295954, vnd: 1618133, ating: 124.9, invp: 1.39, vsess: 15.69, sess: 103106, ent: null, exp: false, hero: false, sessComp: false },
+  { lb: "Ago/23", camp: "Dias Quentes", disc: "−30%", inv: 28575, obj: 1620686, vnd: 1534191, ating: 94.7, invp: 1.86, vsess: 13.41, sess: 114377, ent: null, exp: false, hero: false, sessComp: false },
+  { lb: "Ago/24", camp: "Dias Quentes", disc: "−35%", inv: 35181, obj: 1766555, vnd: 1806074, ating: 102.2, invp: 1.95, vsess: 9.29, sess: 194330, ent: 4367, exp: false, hero: false, sessComp: true },
+  { lb: "Ago/25", camp: "Saldos Verão", disc: "−35%", inv: 36975, obj: 2184654, vnd: 2253295, ating: 103.1, invp: 1.64, vsess: 8.73, sess: 258202, ent: 3582, exp: false, hero: false, sessComp: true },
+  { lb: "Mai/26", camp: "Saldos", disc: "−35%", inv: 40639, obj: 2316000, vnd: 1721803, ating: 74.3, invp: 2.36, vsess: 8.28, sess: 207910, ent: 6161, exp: true, hero: false, sessComp: true },
+  { lb: "Jun/26", camp: "Saldos", disc: "−40%", inv: 31042, obj: 1608939, vnd: 1343361, ating: 83.5, invp: 2.31, vsess: 5.71, sess: 235347, ent: 4847, exp: true, hero: false, sessComp: true },
+  { lb: "Ago/26", camp: "Dias Quentes", disc: "−45%", inv: 45907, obj: 1800000, vnd: 1943983, ating: 108.0, invp: 2.36, vsess: 10.66, sess: 182343, ent: 8587, exp: false, hero: true, sessComp: true },
+];
+
+// vendas por visita ao site — apenas anos com contagem de tráfego comparável (2024+)
+const VSESS_COMP = CAMP.filter((d) => d.sessComp);
+
+// eficiência ONLINE: custo por visita e vendas por visita (2024+)
+const ONLINE = [
+  { lb: "Ago/24", custo: 0.181, vsess: 9.29, sess: 194330, exp: false, hero: false },
+  { lb: "Ago/25", custo: 0.143, vsess: 8.73, sess: 258202, exp: false, hero: false },
+  { lb: "Mai/26", custo: 0.195, vsess: 8.28, sess: 207910, exp: true, hero: false },
+  { lb: "Jun/26", custo: 0.132, vsess: 5.71, sess: 235347, exp: true, hero: false },
+  { lb: "Ago/26", custo: 0.252, vsess: 10.66, sess: 182343, exp: false, hero: true },
+];
+
+// eficiência LOJA: custo por visita e vendas por visita. fiável só nov/25+
+const LOJA = [
+  { lb: "Ago/24", custo: 8.06, vent: 414, ent: 4367, fiavel: false },
+  { lb: "Ago/25", custo: 10.32, vent: 629, ent: 3582, fiavel: false },
+  { lb: "Mai/26", custo: 6.60, vent: 279, ent: 6161, fiavel: true },
+  { lb: "Jun/26", custo: 6.40, vent: 277, ent: 4847, fiavel: true },
+  { lb: "Ago/26", custo: 5.35, vent: 226, ent: 8587, fiavel: true },
+];
+
+const ARC_2026 = [
+  { lb: "Mai/26", sub: "Saldos −35%", ating: 74.3, tone: "exp" },
+  { lb: "Jun/26", sub: "Saldos −40%", ating: 83.5, tone: "exp" },
+  { lb: "Ago/26", sub: "Dias Quentes −45%", ating: 108.0, tone: "hero" },
+];
+
+// ---- Artsoft (aproximado) ----
+const ART = [
+  { lb: "Ago/23", novos: 338, recor: 66, pctRec: 16.3, ticket: 2531, vNovos: 996312, vRecor: 248983, alto: 47.2, medio: 34.9, baixo: 15.8, ab900: 2.1 },
+  { lb: "Ago/24", novos: 270, recor: 148, pctRec: 35.4, ticket: 2733, vNovos: 840382, vRecor: 509213, alto: 51.7, medio: 32.7, baixo: 13.9, ab900: 1.7 },
+  { lb: "Ago/25", novos: 300, recor: 204, pctRec: 40.5, ticket: 2323, vNovos: 968194, vRecor: 464630, alto: 44.6, medio: 39.9, baixo: 14.4, ab900: 1.2 },
+  { lb: "Mai/26", novos: 213, recor: 173, pctRec: 44.8, ticket: 2661, vNovos: 707985, vRecor: 546974, alto: 58.6, medio: 28.2, baixo: 11.5, ab900: 1.7 },
+  { lb: "Jun/26", novos: 147, recor: 156, pctRec: 51.5, ticket: 2932, vNovos: 549648, vRecor: 477501, alto: 61.7, medio: 25.2, baixo: 11.8, ab900: 1.3 },
+  { lb: "Ago/26", novos: 290, recor: 220, pctRec: 43.1, ticket: 2703, vNovos: 973579, vRecor: 712775, alto: 53.5, medio: 31.0, baixo: 14.1, ab900: 1.4 },
+];
+
+// recência dos clientes recorrentes de Ago/26 (tempo desde a compra anterior)
+// nota: histórico do ficheiro começa em fev/2023, logo a recência máxima observável é ~3,5 anos
+const RECENCIA = [
+  { faixa: "Até 6 meses", n: 118, pct: 54 },
+  { faixa: "6 a 12 meses", n: 49, pct: 22 },
+  { faixa: "1 a 2 anos", n: 32, pct: 15 },
+  { faixa: "2 a 5 anos", n: 21, pct: 10 },
+];
+
+const PLATAFORMA = [
+  { nome: "Facebook e Instagram", val: 32518, pct: 71, cor: "#152238" },
+  { nome: "Google", val: 12010, pct: 26, cor: "#B5893C" },
+  { nome: "Rede de websites", val: 1379, pct: 3, cor: "#B5623C" },
+];
+
+
+const C = {
+  bg: "#F5F1E7", surface: "#FFFFFF", navy: "#152238", navyLight: "#2A3E5C",
+  gold: "#B5893C", goldLight: "#D8B876", slate: "#A7AEBB", terracotta: "#B5623C",
+  sage: "#6E8A72", text: "#1B1F27", muted: "#6B6154", border: "#E6DFCC",
+};
+
+const eur = (v) => new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(v);
+const meur = (v) => `${(v / 1e6).toFixed(2)} M€`;
+
+function Kpi({ eyebrow, value, sub, accent, artsoft }) {
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px", flex: "1 1 210px", minWidth: 190, position: "relative" }}>
+      <div style={{ fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: C.muted, fontWeight: 700, marginBottom: 8 }}>{eyebrow}</div>
+      <div style={{ fontFamily: "'Fraunces', serif", fontSize: 27, color: accent || C.navy, lineHeight: 1.1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 12, color: C.muted, marginTop: 6, lineHeight: 1.45 }}>{sub}</div>}
+      {artsoft && <div style={{ fontSize: 9.5, color: C.gold, marginTop: 6, fontWeight: 600 }}>fonte: Artsoft (aprox.)</div>}
+    </div>
+  );
+}
+
+function Title({ eyebrow, title, note, right }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 18 }}>
+      <div style={{ flex: "1 1 340px" }}>
+        <div style={{ fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: C.gold, fontWeight: 700, marginBottom: 5 }}>{eyebrow}</div>
+        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 20, color: C.navy }}>{title}</div>
+        {note && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 5, maxWidth: 720, lineHeight: 1.55 }}>{note}</div>}
+      </div>
+      {right}
+    </div>
+  );
+}
+
+function Card({ children }) {
+  return <div style={{ background: C.surface, borderRadius: 16, padding: "23px 25px", marginBottom: 22, border: `1px solid ${C.border}` }}>{children}</div>;
+}
+
+function Note({ children, tone = "neutral" }) {
+  const t = {
+    neutral: { bg: "rgba(21,34,56,.05)", bar: C.navyLight },
+    warn: { bg: "rgba(181,98,60,.07)", bar: C.terracotta },
+    good: { bg: "rgba(110,138,114,.09)", bar: C.sage },
+    gold: { bg: "rgba(181,137,60,.09)", bar: C.gold },
+  }[tone];
+  return (
+    <div style={{ marginTop: 16, padding: "14px 17px", background: t.bg, borderLeft: `3px solid ${t.bar}`, borderRadius: 6, fontSize: 12.8, lineHeight: 1.65 }}>
+      {children}
+    </div>
+  );
+}
+
+function Tabs({ value, onChange, tabs }) {
+  return (
+    <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 24, borderBottom: `1px solid ${C.border}`, paddingBottom: 13 }}>
+      {tabs.map((t) => (
+        <button key={t.value} onClick={() => onChange(t.value)}
+          style={{ border: "none", cursor: "pointer", padding: "8px 16px", borderRadius: 9, fontSize: 12.5, fontWeight: 600, fontFamily: "Inter, sans-serif",
+            background: value === t.value ? C.navy : "transparent", color: value === t.value ? "#fff" : C.muted, transition: "all .15s ease" }}>
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Seg({ value, onChange, options }) {
+  return (
+    <div style={{ display: "inline-flex", background: "#EFE8D6", borderRadius: 999, padding: 3, gap: 2 }}>
+      {options.map((o) => (
+        <button key={o.value} onClick={() => onChange(o.value)}
+          style={{ border: "none", cursor: "pointer", padding: "6px 14px", borderRadius: 999, fontSize: 12, fontWeight: 600, fontFamily: "Inter, sans-serif",
+            background: value === o.value ? C.navy : "transparent", color: value === o.value ? "#fff" : C.muted, transition: "all .15s ease" }}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function colorFor(d) {
+  if (d.hero) return C.sage;
+  if (d.exp) return C.terracotta;
+  return C.navyLight;
+}
+
+export default function ReportDiasQuentes() {
+  const [tab, setTab] = useState("veredicto");
+  const [metResult, setMetResult] = useState("ating");
+  const [metArt, setMetArt] = useState("clientes");
+
+  const TABS = [
+    { value: "veredicto", label: "Veredicto" },
+    { value: "resultado", label: "Resultado comercial" },
+    { value: "funil", label: "Funil e eficiência" },
+    { value: "quem", label: "Quem comprou" },
+  ];
+
+  return (
+    <div style={{ background: C.bg, minHeight: "100%", fontFamily: "Inter, sans-serif", color: C.text, padding: "28px 24px 44px" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap');
+        * { box-sizing: border-box; }
+      `}</style>
+
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ fontSize: 10.5, letterSpacing: "0.11em", textTransform: "uppercase", color: C.gold, fontWeight: 700, marginBottom: 9 }}>
+          Laskasas Portugal · Relatório de campanha
+        </div>
+        <h1 style={{ fontFamily: "'Fraunces', serif", fontSize: 31, color: C.navy, margin: "0 0 9px", lineHeight: 1.2 }}>
+          Dias Quentes — Agosto 2026
+        </h1>
+        <p style={{ color: C.muted, fontSize: 13.5, maxWidth: 720, margin: 0, lineHeight: 1.6 }}>
+          Análise de resultados da campanha de verão. Este ano a campanha de saldos foi feita em maio e junho e voltou a acontecer em agosto, como nos anos anteriores. Maio e junho tiveram condicionantes próprias, que se assinalam adiante. Este relatório analisa a campanha de agosto no seu contexto.
+        </p>
+      </div>
+
+      <Tabs value={tab} onChange={setTab} tabs={TABS} />
+
+      {/* ===================== VEREDICTO ===================== */}
+      {tab === "veredicto" && (
+        <>
+          <div style={{ display: "flex", gap: 13, flexWrap: "wrap", marginBottom: 22 }}>
+            <Kpi eyebrow="Objetivo atingido" value="108%" sub="1,94 M€ vendidos, sobre 1,80 M€ de objetivo" accent={C.sage} />
+            <Kpi eyebrow="Saldos de Mai/Jun" value="74% e 84%" sub="Ficaram abaixo do objetivo; tiveram condicionantes próprias" accent={C.terracotta} />
+            <Kpi eyebrow="Valor por visita ao site" value="10,66 €" sub="O mais alto desde que há tráfego comparável (2024+)" accent={C.navy} />
+            <Kpi eyebrow="Clientes novos" value="290" sub="Forte mês de aquisição, acima de Mai (213) e Jun (147)" accent={C.gold} artsoft />
+          </div>
+
+          <Card>
+            <Title eyebrow="Saldos de 2026" title="Cumprimento do objetivo: maio, junho e agosto"
+              note="Percentagem do objetivo comercial atingida pelas três campanhas de desconto profundo de 2026. A linha marca os 100% do objetivo." />
+            <ResponsiveContainer width="100%" height={330}>
+              <BarChart data={ARC_2026} margin={{ top: 30, right: 10, left: 0, bottom: 0 }} barCategoryGap="30%">
+                <CartesianGrid stroke={C.border} vertical={false} />
+                <XAxis dataKey="lb" tick={{ fontSize: 13, fill: C.text, fontWeight: 600 }} axisLine={{ stroke: C.border }} tickLine={false} />
+                <YAxis domain={[0, 120]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 12, fill: C.muted }} axisLine={false} tickLine={false} width={46} />
+                <Tooltip contentStyle={{ background: C.navy, border: "none", borderRadius: 8, fontSize: 12 }} labelStyle={{ color: C.goldLight, fontFamily: "'Fraunces', serif" }} itemStyle={{ color: "#fff" }}
+                  formatter={(v, n, p) => [`${v}% do objetivo`, p.payload.sub]} />
+                <ReferenceLine y={100} stroke={C.navy} strokeDasharray="5 4" label={{ value: "objetivo", position: "right", fontSize: 11, fill: C.navy }} />
+                <Bar dataKey="ating" radius={[7, 7, 0, 0]} label={{ position: "top", formatter: (v) => `${v}%`, fontSize: 14, fontWeight: 700, fill: C.navy }}>
+                  {ARC_2026.map((e, i) => <Cell key={i} fill={e.tone === "hero" ? C.sage : C.terracotta} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+            <div style={{ display: "flex", gap: 18, marginTop: 12, fontSize: 12, color: C.muted, flexWrap: "wrap" }}>
+              <span><span style={{ display: "inline-block", width: 10, height: 10, background: C.terracotta, borderRadius: 3, marginRight: 6 }} />Maio e junho de 2026</span>
+              <span><span style={{ display: "inline-block", width: 10, height: 10, background: C.sage, borderRadius: 3, marginRight: 6 }} />Agosto de 2026</span>
+            </div>
+          </Card>
+
+          <div style={{ background: C.navy, borderRadius: 16, padding: "26px 30px", color: "#fff" }}>
+            <div style={{ fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: C.goldLight, fontWeight: 700, marginBottom: 14 }}>Síntese</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(270px, 1fr))", gap: 20, fontSize: 13.5, lineHeight: 1.6 }}>
+              <div><b style={{ color: C.goldLight }}>Agosto cumpriu o objetivo.</b> Atingiu 108% da meta (1,94 M€ sobre 1,80 M€), o segundo melhor cumprimento da série, alinhado com os agostos de 2024 e 2025.</div>
+              <div><b style={{ color: C.goldLight }}>Maio e junho ficaram abaixo.</b> 74% e 84% do objetivo. Junho teve uma comunicação mais afastada da essência da marca, por exigência superior; maio foi idealizado pela equipa. São fatores a ter em conta na leitura.</div>
+              <div><b style={{ color: C.goldLight }}>Comunicação própria da marca.</b> Agosto foi comunicado com a linguagem habitual da Laskasas, ao contrário de junho, e com desconto até 45%.</div>
+              <div><b style={{ color: C.goldLight }}>Mais valor por visita ao site, menos por visita à loja.</b> Agosto vendeu mais com menos tráfego online, mas a conversão em loja foi inferior à de maio e junho. Os dois lados estão detalhados adiante.</div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ===================== RESULTADO ===================== */}
+      {tab === "resultado" && (
+        <>
+          <Card>
+            <Title eyebrow="Contexto completo" title="Agosto de 2026 face a todas as campanhas de verão"
+              note="Todas as campanhas de Dias Quentes e Saldos desde 2022. Alterna entre o cumprimento do objetivo e o valor de vendas."
+              right={<Seg value={metResult} onChange={setMetResult} options={[{ value: "ating", label: "Objetivo atingido" }, { value: "vnd", label: "Vendas (€)" }]} />} />
+            <ResponsiveContainer width="100%" height={340}>
+              <BarChart data={CAMP} margin={{ top: 26, right: 10, left: 0, bottom: 0 }} barCategoryGap="26%">
+                <CartesianGrid stroke={C.border} vertical={false} />
+                <XAxis dataKey="lb" tick={{ fontSize: 12, fill: C.text }} axisLine={{ stroke: C.border }} tickLine={false} />
+                <YAxis
+                  domain={metResult === "ating" ? [0, 135] : [0, 2600000]}
+                  tickFormatter={(v) => metResult === "ating" ? `${v}%` : `${(v / 1e6).toFixed(1)}M€`}
+                  tick={{ fontSize: 12, fill: C.muted }} axisLine={false} tickLine={false} width={52} />
+                <Tooltip contentStyle={{ background: C.navy, border: "none", borderRadius: 8, fontSize: 12 }} labelStyle={{ color: C.goldLight, fontFamily: "'Fraunces', serif" }} itemStyle={{ color: "#fff" }}
+                  formatter={(v, n, p) => metResult === "ating" ? [`${v}% do objetivo`, `${p.payload.camp} ${p.payload.disc}`] : [eur(v), `${p.payload.camp} ${p.payload.disc}`]} />
+                {metResult === "ating" && <ReferenceLine y={100} stroke={C.navy} strokeDasharray="5 4" />}
+                <Bar dataKey={metResult === "ating" ? "ating" : "vnd"} radius={[6, 6, 0, 0]}>
+                  {CAMP.map((e, i) => <Cell key={i} fill={colorFor(e)} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+            <div style={{ display: "flex", gap: 18, marginTop: 12, fontSize: 12, color: C.muted, flexWrap: "wrap" }}>
+              <span><span style={{ display: "inline-block", width: 10, height: 10, background: C.sage, borderRadius: 3, marginRight: 6 }} />Agosto 2026</span>
+              <span><span style={{ display: "inline-block", width: 10, height: 10, background: C.terracotta, borderRadius: 3, marginRight: 6 }} />Maio e junho 2026</span>
+              <span><span style={{ display: "inline-block", width: 10, height: 10, background: C.navyLight, borderRadius: 3, marginRight: 6 }} />Campanhas anteriores</span>
+            </div>
+            <Note tone="good">
+              <b style={{ color: C.navy }}>Agosto de 2026 (108%) foi o segundo melhor cumprimento de objetivo da série, atrás apenas de agosto de 2022 (124,9%), que teve um objetivo bastante mais baixo.</b> As duas campanhas abaixo dos 95% são maio e junho de 2026. Em valor absoluto, agosto de 2025 vendeu mais (2,25 M€ contra 1,94 M€), com um objetivo também mais alto (2,18 M€ contra 1,80 M€). Cada mês foi medido por uma fasquia diferente, por isso valor e cumprimento de objetivo contam histórias distintas.
+            </Note>
+          </Card>
+
+          <Card>
+            <Title eyebrow="Detalhe" title="Quadro das campanhas de verão"
+              note="Valores oficiais de vendas, investimento em paid media. Repara na coluna do desconto: a profundidade subiu ano após ano, de 25% em 2022 até 45% em 2026. Agosto de 2022 tinha um objetivo mais baixo, daí o cumprimento anormalmente alto." />
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                <thead>
+                  <tr style={{ background: C.navy, color: "#fff" }}>
+                    {["Mês", "Campanha", "Desconto", "Investimento", "Objetivo", "Vendas", "Atingido"].map((h, i) => (
+                      <th key={i} style={{ padding: "9px 11px", textAlign: i < 3 ? "left" : "right", fontWeight: 600, fontSize: 11.5 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {CAMP.map((r, i) => (
+                    <tr key={i} style={{ borderBottom: `1px solid ${C.border}`, background: r.hero ? "rgba(110,138,114,.09)" : r.exp ? "rgba(181,98,60,.06)" : "transparent" }}>
+                      <td style={{ padding: "9px 11px", fontWeight: 600, color: C.navy }}>{r.lb}</td>
+                      <td style={{ padding: "9px 11px" }}>{r.camp}</td>
+                      <td style={{ padding: "9px 11px", color: C.muted }}>{r.disc || "—"}</td>
+                      <td style={{ padding: "9px 11px", textAlign: "right" }}>{eur(r.inv)}</td>
+                      <td style={{ padding: "9px 11px", textAlign: "right", color: C.muted }}>{eur(r.obj)}</td>
+                      <td style={{ padding: "9px 11px", textAlign: "right" }}>{eur(r.vnd)}</td>
+                      <td style={{ padding: "9px 11px", textAlign: "right", fontWeight: 700, color: r.ating >= 100 ? C.sage : C.terracotta }}>{r.ating}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {/* ===================== FUNIL ===================== */}
+      {tab === "funil" && (
+        <>
+          <Card>
+            <Title eyebrow="Agosto 2026" title="Do investimento à venda" note="As quatro etapas da campanha, do euro investido à venda gerada." />
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              {[
+                { lbl: "Investimento", val: "45.907 €", sub: "abaixo do teto planeado de ~50.000 €", cor: C.navy },
+                { lbl: "Visitas ao site", val: "182.343", sub: "sessões no mês", cor: C.navyLight },
+                { lbl: "Visitas às lojas", val: "8.587", sub: "entradas registadas", cor: C.gold },
+                { lbl: "Vendas", val: "1,94 M€", sub: "108% do objetivo", cor: C.sage },
+              ].map((s, i) => (
+                <div key={i} style={{ flex: "1 1 180px", minWidth: 160, background: s.cor, borderRadius: 12, padding: "18px 18px", color: "#fff" }}>
+                  <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.75, fontWeight: 700, marginBottom: 8 }}>{i + 1}. {s.lbl}</div>
+                  <div style={{ fontFamily: "'Fraunces', serif", fontSize: 25, lineHeight: 1.05 }}>{s.val}</div>
+                  <div style={{ fontSize: 11.5, opacity: 0.82, marginTop: 6 }}>{s.sub}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <div style={{ background: C.navy, borderRadius: 16, padding: "24px 28px", color: "#fff", marginBottom: 22 }}>
+            <div style={{ fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: C.goldLight, fontWeight: 700, marginBottom: 10 }}>Um fator que ajuda a explicar o resultado</div>
+            <div style={{ fontSize: 14, lineHeight: 1.65, maxWidth: 860 }}>
+              Agosto foi a primeira promoção agressiva depois de um mês inteiro a preço cheio, coisa que já não acontecia há muito. Julho de 2026 não teve campanha, ao contrário do que antecedeu maio (abril com −25% nos best sellers) ou junho (veio logo a seguir aos saldos de maio). Os julhos de 2024 e 2025 tiveram Outlet Market, que é um caso à parte: um evento de escoamento de stock limitado na fábrica, comunicado apenas nas redondezas, cujo objetivo é trazer pessoas à sede e não descontar em larga escala. Julho de 2026 pagou por ser um mês limpo, foi o pior julho da série em vendas, mas deixou a procura por comprar intacta para agosto. É o reverso do efeito de desgaste que os descontos encadeados provocam: quando não se satura o cliente no mês anterior, a campanha seguinte encontra o terreno preparado.
+            </div>
+          </div>
+
+          <Card>
+            <Title eyebrow="Eficiência online" title="O que pagámos e o que rendeu cada visita ao site"
+              note="Só os anos com contagem de tráfego comparável (2024 em diante). À esquerda, quanto custou atrair cada visita; à direita, quanto cada visita gerou em vendas." />
+            <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 340px" }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 8, textAlign: "center" }}>Custo por visita ao site</div>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={ONLINE} margin={{ top: 22, right: 6, left: 0, bottom: 0 }} barCategoryGap="24%">
+                    <CartesianGrid stroke={C.border} vertical={false} />
+                    <XAxis dataKey="lb" tick={{ fontSize: 11, fill: C.text }} axisLine={{ stroke: C.border }} tickLine={false} />
+                    <YAxis tickFormatter={(v) => `${v.toFixed(2)}€`} tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} width={48} />
+                    <Tooltip contentStyle={{ background: C.navy, border: "none", borderRadius: 8, fontSize: 12 }} labelStyle={{ color: C.goldLight }} itemStyle={{ color: "#fff" }} formatter={(v) => [`${v.toFixed(3)} € por visita`, "Custo"]} />
+                    <Bar dataKey="custo" radius={[5, 5, 0, 0]} label={{ position: "top", formatter: (v) => `${v.toFixed(2)}€`, fontSize: 10.5, fill: C.muted }}>
+                      {ONLINE.map((e, i) => <Cell key={i} fill={colorFor(e)} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{ flex: "1 1 340px" }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 8, textAlign: "center" }}>Vendas por visita ao site</div>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={ONLINE} margin={{ top: 22, right: 6, left: 0, bottom: 0 }} barCategoryGap="24%">
+                    <CartesianGrid stroke={C.border} vertical={false} />
+                    <XAxis dataKey="lb" tick={{ fontSize: 11, fill: C.text }} axisLine={{ stroke: C.border }} tickLine={false} />
+                    <YAxis tickFormatter={(v) => `${v}€`} tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} width={40} />
+                    <Tooltip contentStyle={{ background: C.navy, border: "none", borderRadius: 8, fontSize: 12 }} labelStyle={{ color: C.goldLight }} itemStyle={{ color: "#fff" }} formatter={(v, n, p) => [`${v} € por visita`, `${p.payload.sess.toLocaleString("pt-PT")} visitas`]} />
+                    <Bar dataKey="vsess" radius={[5, 5, 0, 0]} label={{ position: "top", formatter: (v) => `${v}€`, fontSize: 10.5, fill: C.muted }}>
+                      {ONLINE.map((e, i) => <Cell key={i} fill={colorFor(e)} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <Note tone="good">
+              <b style={{ color: C.navy }}>Mais caro à entrada, melhor à saída.</b> Agosto foi o mês em que cada visita ao site custou mais (0,25 €), por ter investido mais e recebido menos tráfego (182 mil visitas, contra 258 mil em agosto de 2025). Mas cada visita rendeu 10,66 €, o valor mais alto desde que há tráfego comparável. Traduzindo: menos visitas, mais caras, mas muito mais qualificadas e melhor convertidas.
+            </Note>
+          </Card>
+
+          <Card>
+            <Title eyebrow="Eficiência em loja" title="O que pagámos e o que rendeu cada visita à loja"
+              note="Meses de campanha com registo de entradas. Os valores fiáveis são de maio de 2026 em diante; Ago/24 e Ago/25 (a cinzento) usaram o sistema antigo, que tinha erros de contagem conhecidos, e não são comparáveis." />
+            <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 340px" }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 8, textAlign: "center" }}>Custo por visita à loja</div>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={LOJA} margin={{ top: 22, right: 6, left: 0, bottom: 0 }} barCategoryGap="24%">
+                    <CartesianGrid stroke={C.border} vertical={false} />
+                    <XAxis dataKey="lb" tick={{ fontSize: 11, fill: C.text }} axisLine={{ stroke: C.border }} tickLine={false} />
+                    <YAxis tickFormatter={(v) => `${v}€`} tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} width={40} />
+                    <Tooltip contentStyle={{ background: C.navy, border: "none", borderRadius: 8, fontSize: 12 }} labelStyle={{ color: C.goldLight }} itemStyle={{ color: "#fff" }} formatter={(v, n, p) => [`${v.toFixed(2)} € por visita`, p.payload.fiavel ? "sistema fiável" : "sistema antigo"]} />
+                    <Bar dataKey="custo" radius={[5, 5, 0, 0]} label={{ position: "top", formatter: (v) => `${v.toFixed(1)}€`, fontSize: 10.5, fill: C.muted }}>
+                      {LOJA.map((e, i) => <Cell key={i} fill={e.fiavel ? (e.lb === "Ago/26" ? C.sage : (e.lb.indexOf("Mai") >= 0 || e.lb.indexOf("Jun") >= 0 ? C.terracotta : C.navyLight)) : C.slate} fillOpacity={e.fiavel ? 1 : 0.45} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{ flex: "1 1 340px" }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 8, textAlign: "center" }}>Vendas por visita à loja</div>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={LOJA} margin={{ top: 22, right: 6, left: 0, bottom: 0 }} barCategoryGap="24%">
+                    <CartesianGrid stroke={C.border} vertical={false} />
+                    <XAxis dataKey="lb" tick={{ fontSize: 11, fill: C.text }} axisLine={{ stroke: C.border }} tickLine={false} />
+                    <YAxis tickFormatter={(v) => `${v}€`} tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} width={48} />
+                    <Tooltip contentStyle={{ background: C.navy, border: "none", borderRadius: 8, fontSize: 12 }} labelStyle={{ color: C.goldLight }} itemStyle={{ color: "#fff" }} formatter={(v, n, p) => [`${v} € por visita`, p.payload.fiavel ? `${p.payload.ent.toLocaleString("pt-PT")} entradas · fiável` : `${p.payload.ent.toLocaleString("pt-PT")} entradas · sistema antigo`]} />
+                    <Bar dataKey="vent" radius={[5, 5, 0, 0]} label={{ position: "top", formatter: (v) => `${v}€`, fontSize: 10.5, fill: C.muted }}>
+                      {LOJA.map((e, i) => <Cell key={i} fill={e.fiavel ? (e.lb === "Ago/26" ? C.sage : (e.lb.indexOf("Mai") >= 0 || e.lb.indexOf("Jun") >= 0 ? C.terracotta : C.navyLight)) : C.slate} fillOpacity={e.fiavel ? 1 : 0.45} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <Note tone="warn">
+              <b style={{ color: C.navy }}>Encheu as lojas, mas a loja não converteu tão bem.</b> Agosto trouxe visitantes à loja ao custo mais baixo (5,35 € por entrada) e em muito maior número (8.587, contra 6.161 em maio e 4.847 em junho). Mas cada visita à loja rendeu apenas 226 €, abaixo dos 279 € de maio e 277 € de junho. Ou seja, agosto atraiu muita gente à loja de forma barata, mas essa afluência converteu-se em venda com menos eficácia do que nos meses anteriores. É o ponto do mês com mais margem para melhorar, e vale a pena perceber porquê do lado comercial: capacidade de atendimento no pico, ou tráfego de menor intenção atraído pelo desconto profundo.
+            </Note>
+          </Card>
+
+          <div style={{ background: C.surface, borderRadius: 16, padding: "23px 25px", border: `1px solid ${C.border}` }}>
+            <Title eyebrow="Onde foi investido" title="Repartição por meio" />
+            <div style={{ marginTop: 4 }}>
+              {PLATAFORMA.map((p, i) => (
+                <div key={i} style={{ marginBottom: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 5 }}>
+                    <span style={{ fontWeight: 600, color: C.navy }}>{p.nome}</span>
+                    <span style={{ color: C.muted }}>{eur(p.val)} · {p.pct}%</span>
+                  </div>
+                  <div style={{ height: 12, background: "#EFE8D6", borderRadius: 6, overflow: "hidden" }}>
+                    <div style={{ width: `${p.pct}%`, height: "100%", background: p.cor, borderRadius: 6 }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Note>
+              O grosso do investimento foi para Facebook e Instagram, seguido do Google. A rede de websites teve um papel de reforço de exposição no arranque.
+            </Note>
+          </div>
+        </>
+      )}
+
+      {/* ===================== QUEM COMPROU ===================== */}
+      {tab === "quem" && (
+        <>
+          <div style={{ background: "rgba(181,137,60,.09)", border: `1px solid ${C.gold}55`, borderRadius: 12, padding: "14px 18px", marginBottom: 22, fontSize: 12.5, color: C.text, lineHeight: 1.6 }}>
+            <b style={{ color: C.navy }}>Nota sobre a fonte.</b> Os dados desta secção vêm do Artsoft, o CRM atual, que tem falhas conhecidas que não permitem ler os valores com total exatidão. Os totais não coincidem com o ficheiro oficial de vendas usado no resto do relatório, pelo que servem para ler tendências e composição, não valores absolutos. As leituras são aproximadas.
+          </div>
+
+          <Card>
+            <Title eyebrow="Aquisição vs retenção" title="Clientes novos e recorrentes por campanha"
+              note="Alterna entre número de clientes e valor gerado por cada grupo."
+              right={<Seg value={metArt} onChange={setMetArt} options={[{ value: "clientes", label: "Nº de clientes" }, { value: "valor", label: "Valor (€)" }]} />} />
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={ART} margin={{ top: 20, right: 10, left: 0, bottom: 0 }} barCategoryGap="26%">
+                <CartesianGrid stroke={C.border} vertical={false} />
+                <XAxis dataKey="lb" tick={{ fontSize: 12, fill: C.text }} axisLine={{ stroke: C.border }} tickLine={false} />
+                <YAxis tickFormatter={(v) => metArt === "clientes" ? v : `${(v / 1000).toFixed(0)}k€`} tick={{ fontSize: 12, fill: C.muted }} axisLine={false} tickLine={false} width={50} />
+                <Tooltip contentStyle={{ background: C.navy, border: "none", borderRadius: 8, fontSize: 12 }} labelStyle={{ color: C.goldLight }} itemStyle={{ color: "#fff" }}
+                  formatter={(v, n) => metArt === "clientes" ? [v, n] : [eur(v), n]} />
+                <Legend wrapperStyle={{ fontSize: 12.5, paddingTop: 12 }} />
+                <Bar dataKey={metArt === "clientes" ? "novos" : "vNovos"} name="Clientes novos" stackId="a" fill={C.sage} radius={metArt === "clientes" ? [0, 0, 0, 0] : [0, 0, 0, 0]} />
+                <Bar dataKey={metArt === "clientes" ? "recor" : "vRecor"} name="Clientes recorrentes" stackId="a" fill={C.navy} radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <Note tone="good">
+              <b style={{ color: C.navy }}>Agosto teve uma divisão equilibrada entre novos e recorrentes.</b> Cerca de 57% clientes novos e 43% recorrentes, quase meio a meio. É uma divisão mais equilibrada do que os agostos anteriores, que penderam mais para clientes novos (84% em 2023, 65% em 2024, 60% em 2025), e menos assente na base fiel do que junho, o único mês de campanha que passou os 50% de recorrentes. Dados do Artsoft, aproximados.
+            </Note>
+          </Card>
+
+          <Card>
+            <Title eyebrow="Recência" title="Há quanto tempo tinham comprado os clientes recorrentes de agosto"
+              note="Dos 220 clientes de agosto que já tinham comprado antes, há quanto tempo foi a compra anterior. Baseado nas datas de venda ao nível do cliente." />
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={RECENCIA} margin={{ top: 22, right: 10, left: 0, bottom: 0 }} barCategoryGap="26%">
+                <CartesianGrid stroke={C.border} vertical={false} />
+                <XAxis dataKey="faixa" tick={{ fontSize: 11.5, fill: C.text }} axisLine={{ stroke: C.border }} tickLine={false} />
+                <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11.5, fill: C.muted }} axisLine={false} tickLine={false} width={42} />
+                <Tooltip contentStyle={{ background: C.navy, border: "none", borderRadius: 8, fontSize: 12 }} labelStyle={{ color: C.goldLight }} itemStyle={{ color: "#fff" }}
+                  formatter={(v, n, p) => [`${v}% · ${p.payload.n} clientes`, "Desde a compra anterior"]} />
+                <Bar dataKey="pct" radius={[6, 6, 0, 0]} label={{ position: "top", formatter: (v) => `${v}%`, fontSize: 11, fill: C.muted }}>
+                  {RECENCIA.map((e, i) => <Cell key={i} fill={i === 0 ? C.sage : C.navyLight} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+            <Note>
+              <b style={{ color: C.navy }}>Os recorrentes de agosto são clientes recentes, não adormecidos.</b> Mais de metade (54%) já tinha comprado nos últimos seis meses e três quartos (76%) no último ano. A campanha não reativou clientes antigos, foi sobretudo comprada por quem já anda a comprar. Faz sentido para mobiliário, onde quem mobila uma divisão volta em breve para a seguinte. <b style={{ color: C.navy }}>Ressalva:</b> o histórico disponível começa em fevereiro de 2023, por isso a recência máxima medível é de cerca de três anos e meio; um cliente que só tenha comprado antes de 2023 conta aqui como novo, não como recorrente antigo.
+            </Note>
+          </Card>
+
+          <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
+            <div style={{ background: C.surface, borderRadius: 16, padding: "23px 25px", border: `1px solid ${C.border}`, flex: "1 1 400px" }}>
+              <Title eyebrow="Ticket médio" title="Valor médio por compra" note="Apesar do desconto até 45%, o ticket manteve-se saudável." />
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={ART} margin={{ top: 20, right: 10, left: 0, bottom: 0 }} barCategoryGap="26%">
+                  <CartesianGrid stroke={C.border} vertical={false} />
+                  <XAxis dataKey="lb" tick={{ fontSize: 11.5, fill: C.text }} axisLine={{ stroke: C.border }} tickLine={false} />
+                  <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(1)}k€`} domain={[0, 3200]} tick={{ fontSize: 11.5, fill: C.muted }} axisLine={false} tickLine={false} width={46} />
+                  <Tooltip contentStyle={{ background: C.navy, border: "none", borderRadius: 8, fontSize: 12 }} labelStyle={{ color: C.goldLight }} itemStyle={{ color: "#fff" }} formatter={(v) => [eur(v), "Ticket médio"]} />
+                  <Bar dataKey="ticket" radius={[6, 6, 0, 0]}>
+                    {ART.map((e, i) => <Cell key={i} fill={e.lb === "Ago/26" ? C.sage : C.navyLight} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <Note>
+                O ticket médio de agosto (2.703 €) ficou acima do de agosto de 2025 (2.323 €), apesar de o desconto ter sido mais profundo. O desconto atraiu procura sem destruir o valor médio da compra.
+              </Note>
+            </div>
+
+            <div style={{ background: C.surface, borderRadius: 16, padding: "23px 25px", border: `1px solid ${C.border}`, flex: "1 1 400px" }}>
+              <Title eyebrow="Faixas de valor" title="Peso de cada faixa na receita do mês" note="Percentagem da receita de cada campanha por faixa de valor da compra. Faixa alta: 5.000 € ou mais." />
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={ART} margin={{ top: 10, right: 10, left: 0, bottom: 0 }} barCategoryGap="22%">
+                  <CartesianGrid stroke={C.border} vertical={false} />
+                  <XAxis dataKey="lb" tick={{ fontSize: 11, fill: C.text }} axisLine={{ stroke: C.border }} tickLine={false} />
+                  <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} width={40} />
+                  <Tooltip contentStyle={{ background: C.navy, border: "none", borderRadius: 8, fontSize: 12 }} labelStyle={{ color: C.goldLight }} itemStyle={{ color: "#fff" }} formatter={(v) => `${v}%`} />
+                  <Legend wrapperStyle={{ fontSize: 11.5, paddingTop: 10 }} />
+                  <Bar dataKey="alto" name="Alto (5.000€+)" stackId="a" fill={C.navy} />
+                  <Bar dataKey="medio" name="Médio (2.000–4.999€)" stackId="a" fill={C.gold} />
+                  <Bar dataKey="baixo" name="Baixo (900–1.999€)" stackId="a" fill={C.slate} />
+                  <Bar dataKey="ab900" name="Abaixo 900€" stackId="a" fill={C.terracotta} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+              <Note>
+                Em agosto, as compras de valor alto pesaram 53,5% da receita, mais do que em agosto de 2025 (44,6%) mas menos do que em maio (58,6%) e junho (61,7%). Maio e junho, apesar de venderem menos no total, concentraram-se mais em clientes de valor elevado; agosto teve uma composição mais próxima do padrão habitual do negócio. Dados do Artsoft, aproximados.
+              </Note>
+            </div>
+          </div>
+        </>
+      )}
+
+      <div style={{ background: C.surface, borderRadius: 14, padding: "18px 22px", border: `1px solid ${C.border}`, fontSize: 11.8, color: C.muted, lineHeight: 1.65, marginTop: 4 }}>
+        <b style={{ color: C.navy }}>Notas de leitura.</b> Vendas, objetivos e investimento são valores oficiais (ficheiro de vendas). Os dados de clientes novos, recorrentes, ticket médio e faixas de valor vêm do Artsoft, o CRM atual, que tem falhas conhecidas; são aproximados e não coincidem com os valores oficiais. O ticket médio é, por cliente, a soma das suas compras a dividir pelo número de compras (não é a compra maior nem a última); para a classificação em faixa de valor, só contam as compras iguais ou superiores a 900 €. As vendas incluem lojas físicas e online, não sendo atribuíveis a plataformas de anúncios, pelo que os rácios são indicadores de negócio e não de atribuição. O custo por visita à loja é um indicador de referência e não de atribuição, já que o investimento em paid media serve o negócio todo e não apenas as visitas às lojas. As entradas em loja usam o sistema de contagem atual, ativo desde novembro de 2025; períodos anteriores usaram um sistema com erros de contagem conhecidos e não são diretamente comparáveis.
+      </div>
+
+      <div style={{ marginTop: 16, fontSize: 11.5, color: C.muted, textAlign: "center" }}>
+        Laskasas Portugal · Campanha Dias Quentes · 6 a 31 de agosto de 2026
+      </div>
+    </div>
+  );
+}
